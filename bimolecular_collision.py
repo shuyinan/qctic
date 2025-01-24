@@ -37,6 +37,7 @@ import random
 import datetime
 import math
 import sys
+import numpy
 
 # some constants
 DEBUG = False
@@ -453,6 +454,62 @@ def add_collision_velocity(molecule2_data, E_col):
     print("Collision velocity added to molecule 2 atoms.")
 
 
+def random_rotation_matrix():
+    """
+    Generates a random 3D rotation matrix.
+
+    Returns:
+        numpy.ndarray: A 3x3 rotation matrix.
+    """
+    # Generate a random quaternion
+    q = numpy.random.normal(0, 1, 4)
+    q /= numpy.linalg.norm(q)  # Normalize the quaternion
+
+    # Extract quaternion components
+    q0, q1, q2, q3 = q
+
+    # Construct the rotation matrix
+    R = numpy.array([
+        [1 - 2 * (q2**2 + q3**2), 2 * (q1*q2 - q0*q3), 2 * (q1*q3 + q0*q2)],
+        [2 * (q1*q2 + q0*q3), 1 - 2 * (q1**2 + q3**2), 2 * (q2*q3 - q0*q1)],
+        [2 * (q1*q3 - q0*q2), 2 * (q2*q3 + q0*q1), 1 - 2 * (q1**2 + q2**2)]
+    ])
+    return R
+
+
+def rotate_molecule_with_random_rotation(molecule_data, if12, z_x_values):
+    """
+    Rotates the geometry of a molecule with a unique random rotation matrix for each initial condition,
+    preserving the center of mass defined by z_x_values.
+
+    Args:
+        molecule_data (dict): Molecule data structure.
+        z_x_values (list of tuples): List of (z, x) positions for each initial condition.
+    """
+    # Ensure the number of initial conditions matches the z_x_values length
+    if if12==2:
+        if len(molecule_data["conditions"]) != len(z_x_values):
+            raise ValueError("Number of initial conditions must match the length of z_x_values.")
+        # Rotate the geometry for each initial condition
+        for condition, (z_cm, x_cm) in zip(molecule_data["conditions"], z_x_values):
+            # Generate a unique random rotation matrix for this initial condition
+            rotation_matrix = random_rotation_matrix()
+            for atom in condition["atoms"]:
+                # Translate atom to the center of mass
+                position = numpy.array([atom["x"] - x_cm, atom["y"], atom["z"] - z_cm])
+                # Apply the unique rotation for this condition
+                rotated_position = rotation_matrix @ position
+                # Translate atom back to the specified center of mass
+                atom["x"], atom["y"], atom["z"] = rotated_position + numpy.array([x_cm, 0, z_cm])
+    elif if12==1:
+        for condition in molecule_data["conditions"]:
+            rotation_matrix = random_rotation_matrix()
+            for atom in condition["atoms"]:
+                position = numpy.array([atom["x"], atom["y"], atom["z"]])
+                rotated_position = rotation_matrix @ position
+                atom["x"], atom["y"], atom["z"] = rotated_position
+
+
 def generate_atom_data(n, atom, position, z_x_values=None):
     """
     Generates initial conditions for a single atom.
@@ -551,8 +608,8 @@ def sample_z_x(n, bmin, bmax, strata, separation):
         for i in range(indexmin,indexmax):
             bmin_stratum = bmin + istrata * (bmax - bmin) / strata
             bmax_stratum = bmin + (istrata + 1) * (bmax - bmin) / strata
-            x = random.uniform(bmin_stratum, bmax_stratum)
-            z_x_values.append((z, x))
+            x = random.uniform((bmin_stratum*bmin_stratum), (bmax_stratum*bmax_stratum))
+            z_x_values.append((z, sqrt(x)))
 
     return z_x_values
 
@@ -843,6 +900,7 @@ Author: Yinan Shu
   parser.add_option('--strata', dest='strata', type=int, nargs=1, default=1, help="number of strata between bmin and bmax, default value is 1, if a value larger than 1 is given, for example, --strata 3, then integer(n/3) initial conditions is given for each strata for the first 2 strata, and last strata has (n-2n/3) geometries. In addition, for ith strata, the bmin is bmin+(i-1)*(bmax-bmin), and bmax is bmin+i*(bmax-bmin)")
   parser.add_option('--separation', dest='separation', type=float, nargs=1, default=10.0, help="initial separation of the center of mass of two molecules, in unit of angstrom")
   parser.add_option('--relative_trans', dest='relative_trans',  type=float, nargs=1, default=1.0, help="initial relative translational energy between the center of mass of two molecules, in unit of eV")
+  parser.add_option('--no_random_orient', dest='no_random_orient', action='store_true', help="Randomly orient the molecules in the space")
 
 
   parser.add_option('-o', dest='o', type=str, nargs=1, default='initconds', help="Output filename (string, default=""initconds"")")
@@ -1013,6 +1071,21 @@ Author: Yinan Shu
 
   if not DEBUG:
       delete_files(['KEYSTROKES.state_selected'])
+
+  #==============
+  # Randomly orient the molecule
+  #==============
+  if not options.no_random_orient:
+      # rotate the first molecule
+      if system!='1+2' and system!='1+3':
+          print("Random orient MOLECUL 1")
+          rotate_molecule_with_random_rotation(molecule1_data, 1, z_x_values)
+      # rotate the second molecule
+      elif system!='2+1' and system!='3+1':
+          print("Random orient MOLECUL 2")
+          rotate_molecule_with_random_rotation(molecule2_data, 2, z_x_values)
+            
+
 
   #==============
   # Sampling collision velocity
