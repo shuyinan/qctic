@@ -609,7 +609,7 @@ def sample_z_x(n, bmin, bmax, strata, separation):
             bmin_stratum = bmin + istrata * (bmax - bmin) / strata
             bmax_stratum = bmin + (istrata + 1) * (bmax - bmin) / strata
             x = random.uniform((bmin_stratum*bmin_stratum), (bmax_stratum*bmax_stratum))
-            z_x_values.append((z, sqrt(x)))
+            z_x_values.append((z, math.sqrt(x)))
 
     return z_x_values
 
